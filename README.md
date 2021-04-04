@@ -1,0 +1,2 @@
+# NiceScript
+NiceScript
