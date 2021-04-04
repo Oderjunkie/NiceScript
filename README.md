@@ -1,6 +1,7 @@
 # NiceScript
 ---
 NiceScript is a language that compiles to javascript, and aims to have the simplest and most readable grammar possible.
+The dependencies.sh and dependencies.bat files are there so you can just download all dependencies without trial and error.
 ## Compiler Usage
 ---
 ```
