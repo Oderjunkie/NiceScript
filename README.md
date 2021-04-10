@@ -19,11 +19,11 @@ optional arguments:
 ### Statements
 NiceScript uses indentation to indicate compound statements.
 The currently limited grammar includes three types of statements:
-##### Variable definitions/changes
+#### Variable definitions/changes
 Variable definitions and changes take the form `NAME = EXPRESSION`.
-##### If statements
+#### If statements
 If statements take the form `if EXPRESSION` or `if EXPRESSION = EXPRESSION`, if statements must be followed by indented code, the statement stops on unindentation.
-##### Function calls
+#### Function calls
 Function calls are similar to simplified ruby or elixir function calls: `FUNCTIONNAME ARGUMENTS`, arguments are expressions seperated by whitespace.
 Function calls without arguments can be done with just the name by itself.
 ### Alternative tokens
