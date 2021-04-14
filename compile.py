@@ -4,9 +4,6 @@ import argparse
 from iteration_utilities import deepflatten
 from parsimonious import Grammar, NodeVisitor
 import parsimonious.nodes as pNodes
-from pprint import pprint
-import sys
-import time
 
 grammar = Grammar(r"""
 module = ( NEWLINE? ((COMMENT / statement) (NEWLINE (COMMENT / statement))* NEWLINE?)? )
@@ -33,7 +30,7 @@ cond = ( expr WHITESPACE? comparison WHITESPACE? expr )
 algebraic_op = PLUS/MINUS/TIMES/ON/MOD
 
 fromloop = ( "from" WHITESPACE expr WHITESPACE "to" WHITESPACE expr )
-vardef = ( IDENTIFIER WHITESPACE? EQU WHITESPACE? expr )
+vardef = ( IDENTIFIER WHITESPACE? EQU WHITESPACE? expr_func )
 functioncall = IDENTIFIER (WHITESPACE expr)+
 ifstat = "if" WHITESPACE (cond / expr)
 function = IDENTIFIER (WHITESPACE IDENTIFIER)* WHITESPACE? '->' WHITESPACE? expr_func?
@@ -464,6 +461,7 @@ def perform_actions(ns):
         def expr2js(expr):
             if type(expr)==Name: return str(expr)
             if type(expr)==str: return "'"+expr+"'"
+            if type(expr)==int: return str(expr)
             if type(expr)==Regex: return str(expr)
             if type(expr)==Lambda: return lambda2js(expr)
             if type(expr)==FuncCall: return funccall2js(expr)
