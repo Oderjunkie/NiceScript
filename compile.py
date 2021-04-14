@@ -23,9 +23,9 @@ TIMES = "*"/("times"/"by")
 ON = "/"/("on"/"over")
 MOD = "%"/("mod"/"modulo")
 comparison = LTE / GTE / LT / GT / NOTEQU / EQU
-value = NUMBER / STRING / REGEX / function / IDENTIFIER
+value = ('(' WHITESPACE? expr_func WHITESPACE? ')') / NUMBER / STRING / REGEX / function / IDENTIFIER
 
-cond = ( expr WHITESPACE? comparison WHITESPACE? expr )
+cond = ( ( value ) WHITESPACE? comparison WHITESPACE? ( value ) )
 
 algebraic_op = PLUS/MINUS/TIMES/ON/MOD
 
@@ -238,7 +238,7 @@ def perform_actions(ns):
                             continue
                     except Exception as e:
                         print('Vardef value parsing error: {}'.format(e))
-                        if part.strip()=='':
+                        if str(part).strip()=='':
                             continue
                     final.append(part)
                 return VarDef(Name(final[0].text), final[-1])
@@ -298,8 +298,12 @@ def perform_actions(ns):
         def visit_value(self, node, visited_children):
             text = visited_children
             try:
+                itr = 0
                 while type(text)==list:
-                    text = text[0]
+                    itr += 1
+                    text = text[len(text)//2]
+                if type(text) in [Expr, FuncCall, Lambda, FromLoop]:
+                    return text
                 if text.expr_name=='IDENTIFIER':
                     return Name(text.text)
                 if text.expr_name=='STRING':
@@ -420,7 +424,7 @@ def perform_actions(ns):
             part = visited_children or node
             left = part[0]
             comp = part[2][0][0].text
-            right = part[4][0]
+            right = part[4]
             if type(left) in [int, float]:
                 left = Expr(left)
             if type(right) in [int, float]:
@@ -436,8 +440,9 @@ def perform_actions(ns):
         return newtree
     def javascript(module):
         global block
+        global scope
         scope = []
-        builtins = ['print', 'skip', 'break']
+        builtins = ['skip', 'break', 'return']
         indent = 0
         block = False
         def lambda2js(expr):
@@ -458,17 +463,21 @@ def perform_actions(ns):
             if comp in ['>=', 'is more than or equal to']: comp = '>='
             if comp in ['<=', 'is less than or equal to']: comp = '<='
             return '{} {} {}'.format(left, comp, right)
-        def expr2js(expr):
+        def expr2js(expr, parened=False):
+            string = '({})' if parened else '{}'
+            global scope
             if type(expr)==Name: return str(expr)
             if type(expr)==str: return "'"+expr+"'"
             if type(expr)==int: return str(expr)
             if type(expr)==Regex: return str(expr)
-            if type(expr)==Lambda: return lambda2js(expr)
-            if type(expr)==FuncCall: return funccall2js(expr)
-            if type(expr)==Cond: return cond2js(expr)
+            if type(expr)==Lambda: return string.format(lambda2js(expr))
+            if type(expr)==FuncCall: return string.format(funccall2js(expr))
+            if type(expr)==Cond: return string.format(cond2js(expr))
             left = expr.left
-            if type(left)==Name and left.name not in [*scope, *builtins]:
-                scope.append(left.name)
+            if type(left)==Name and left.name=='name':
+                left.name = '_name'
+            if type(left)==Name and left.name.split('.')[0] not in [*sum(scope, start=[]), *builtins]:
+                scope[-1].append(left.name)
             if expr.op:
                 op = expr.op
                 if op in ['+', 'plus', 'and', 'with']:  op = '+'
@@ -477,36 +486,50 @@ def perform_actions(ns):
                 if op in ['/', 'on', 'over']:           op = '/'
                 if op in ['%', 'mod', 'modulo']:        op = '%'
                 right = expr.right
-                if type(right)==Name and right.name not in [*scope, *builtins]:
-                    scope.append(right.name)
-                return '{} {} {}'.format(left, op, right)
-            return str(left)
+                if type(right)==Name and right.name=='name':
+                    right.name = '_name'
+                if type(right)==Name and right.name.split('.')[0] not in [*sum(scope, start=[]), *builtins]:
+                    scope[-1].append(right.name)
+                return string.format('{} {} {}'.format(expr2js(left, True), op, expr2js(right, True)))
+            return string.format(str(left))
         def vardef2js(vardef):
-            if type(vardef.set)==Name and vardef.set.name not in [*scope, *builtins]:
-                scope.append(vardef.set.name)
+            global scope
+            name = vardef.set
+            if type(name)==Name and name.name=='name':
+                name.name = '_name'
+            if type(name)==Name and name.name.split('.')[0] not in [*sum(scope, start=[]), *builtins]:
+                scope[-1].append(vardef.set.name)
             if type(vardef.to)==FromLoop:
                 return fromloop2js(vardef.to, vardef.set)
             if type(vardef.to)!=Lambda:
-                return '{} = {};'.format(vardef.set, expr2js(vardef.to))
+                return '{} = {};'.format(name, expr2js(vardef.to))
             else:
                 if vardef.to.result:
-                    return '{} = {};'.format(vardef.set, lambda2js(vardef.to))
+                    return '{} = {};'.format(name, expr2js(vardef.to))
                 else:
-                    return '{} = {}'.format(vardef.set, lambda2js(vardef.to))
+                    return '{} = {}'.format(name, expr2js(vardef.to))
         def fromloop2js(loop, variable):
             global block
             block = True
+            if variable=='name':
+                variable = '_name'
             return 'for ({0} = {1}; {0}++ < {2};)'.format(variable, loop.from_, loop.to_)
         def funccall2js(call):
             name = call.name.name
-            if name=='print':
+            if name=='print' and 'print' not in scope[-1]:
                 name = 'console.log'
-            if name=='$':
+            if name=='#get':
                 name = 'document.querySelector'
+            if name=='#id':
+                name = 'document.getElementById'
+            if name=='name':
+                name = '_name'
             if name=='skip':
                 return 'continue;'
             if name=='break':
                 return 'break;'
+            if name=='return':
+                return 'return {}'.format(', '.join([expr2js(x) for x in call.args]))
             return '{}({})'.format(name, ', '.join([expr2js(x) for x in call.args]))
         def ifstat2js(stat):
             global block
@@ -514,12 +537,17 @@ def perform_actions(ns):
             term = expr2js(stat.term)
             return 'if ({})'.format(term)
         out = ''
+        scope.append([])
         for stmt in module.body:
             while stmt.indent<indent:
                 indent -= 1
+                if len(scope[-1])>0:
+                    out += '    '*stmt.indent+'var '+', '.join(scope[-1])+';\n'
+                scope = scope[:-1]
                 out += '    '*stmt.indent+'}\n'
             while stmt.indent>indent:
                 out += ' {\n'
+                scope.append([])
                 indent += 1
             out += '    '*stmt.indent
             if type(stmt.expr)==VarDef:
@@ -536,9 +564,12 @@ def perform_actions(ns):
                 out += '\n'
         while 0<indent:
             indent -= 1
+            if len(scope[-1])>0:
+                out += '    '*stmt.indent+'var '+', '.join(scope[-1])+';\n'
+            scope = scope[:-1]
             out += '}'
-        if scope:
-            defs = 'var '+', '.join(scope)+';'
+        if len(scope[0])>0:
+            defs = 'var '+', '.join(scope[0])+';'
             return defs+'\n'+out
         else:
             return out
