@@ -56,8 +56,8 @@ NiceScript currently has 4 built in functions (including their JavaScript equiva
 - `printerror` becomes `console.error`
 - `skip` becomes `continue;`
 - `break` stays as `break;`
-### Example program
-This is FizzBuzz in NiceScript
+### Example programs
+FizzBuzz (Console output):
 ```
 counter is from 0 to 100
     if counter mod 15 is 0
@@ -70,4 +70,13 @@ counter is from 0 to 100
 		print "Fizz"
 		skip
 	print counter
+```
+Fibonacci:
+```
+fibonacci = index ->
+    if index < 2
+        return index
+    return (fibbonachi (index - 1)) + (fibbonachi (index - 2)) /* Parens so it becomes fib(i-2) and not fib(i,-,2)*/
+/* Usage: [fibonacci index] */
+number = fibonacci 10 /* 55 */
 ```
