@@ -4,6 +4,9 @@ import argparse
 from iteration_utilities import deepflatten
 from parsimonious import Grammar, NodeVisitor
 import parsimonious.nodes as pNodes
+from pprint import pprint
+import sys
+import time
 
 grammar = Grammar(r"""
 module = ( NEWLINE? ((COMMENT / statement) (NEWLINE (COMMENT / statement))* NEWLINE?)? )
@@ -58,7 +61,7 @@ REGEX = ~"\/([^\/]|\\\/)*?\/"
 IDENTIFIER = ~"[a-zA-Z_$#][a-zA-Z0-9_$#\.]*"
 NEWLINE = ~"(\r|\n|\r\n)+"
 WHITESPACE = ~"[ \t]+"
-COMMENT = INDENT* ~"\/\*.*?\*\/"s
+COMMENT = INDENT* ~"(\/\*.*?\*\/)|(\/\/.*\n)"s
 """)
 
 parse = None
@@ -166,6 +169,8 @@ def perform_actions(ns):
             return 'Cond({}, {}, {})'.format(repr(self.left), repr(self.comp), repr(self.right))
         def __str__(self):
             return '{} {} {}'.format(str(self.left), str(self.comp), str(self.right))
+    class Regex(str):
+        pass
     class Expr:
         def __init__(self, left, op=None, right=None):
             self.left = left
@@ -232,11 +237,10 @@ def perform_actions(ns):
                     while type(part)==list:
                         part = part[0]
                     try:
-                        #print(part)
                         if part.text.strip()=='':
                             continue
                     except Exception as e:
-                        print(e, type(part))
+                        print('Vardef value parsing error: {}'.format(e))
                         if part.strip()=='':
                             continue
                     final.append(part)
@@ -271,7 +275,8 @@ def perform_actions(ns):
                 part = visited_children[1]
                 args = [x[1] for x in part]
                 assert visited_children[0].expr_name=='IDENTIFIER'
-                final = FuncCall(Name(visited_children[0].text), args)                return final
+                final = FuncCall(Name(visited_children[0].text), args)
+                return final
             except Exception as e:
                 print('FunctionCall error: {}'.format(e))
                 return visited_children or node
@@ -302,6 +307,8 @@ def perform_actions(ns):
                     return Name(text.text)
                 if text.expr_name=='STRING':
                     return text.text[1:-1]
+                if text.expr_name=='REGEX':
+                    return Regex(text.text)
                 num = float(text.text)
                 if int(num)==num:
                     num = int(num)
@@ -327,7 +334,7 @@ def perform_actions(ns):
                     if thing[0].expr_name=='STRING':
                         return thing[0].text
                     if thing[0].expr_name=='REGEX':
-                        return thing[0].text
+                        return Regex(thing[0].text)
                     if type(thing[0])==Lambda:
                         return thing[0]
                 finals = []
@@ -379,7 +386,7 @@ def perform_actions(ns):
                         if thing[0].expr_name=='STRING':
                             return thing[0].text
                         if thing[0].expr_name=='REGEX':
-                            return thing[0].text
+                            return Regex(thing[0].text)
                         if type(thing[0])==Lambda:
                             return thing[0]
                 except Exception:
@@ -401,7 +408,6 @@ def perform_actions(ns):
                                     continue
                             except Exception:
                                 pass
-                            #print(part)
                             cleaned.append(part)
                     except Exception:
                         pass
@@ -410,16 +416,8 @@ def perform_actions(ns):
                             finals.append(cleaned[0])
                         except Exception:
                             pass
-                #print('\n\n\n\n-----------------')
-                #for part in finals:
-                #    print(part, type(part), end='\n\n')
-                #print(finals[0], finals[1].text, finals[2])
                 return Expr(finals[0], finals[1].text, finals[2])
-                #for part in thing:
-                #    print('-------------------')
-                #    print(part)
             except Exception as e:
-                #print('ExprFunc error: {}'.format(e))
                 return finals[0]
         def visit_cond(self, node, visited_children):
             part = visited_children or node
@@ -433,11 +431,7 @@ def perform_actions(ns):
             return Cond(left, comp, right)
         def visit_ifstat(self, node, visited_children):
             part = visited_children or node
-            #print(repr(part[2][0]))
             return IfStat(part[2][0])
-            #pprint()
-            #exit()
-            #return part
         def generic_visit(self, node, visited_children):
             return visited_children or node
     def reparse(tree):
@@ -450,7 +444,12 @@ def perform_actions(ns):
         indent = 0
         block = False
         def lambda2js(expr):
-            return '({}) => {}'.format(', '.join([str(x) for x in expr.args]), expr2js(expr.result))
+            global block
+            if expr.result:
+                return '({}) => {}'.format(', '.join([str(x) for x in expr.args]), expr2js(expr.result))
+            else:
+                block = True
+                return '({}) =>'.format(', '.join([str(x) for x in expr.args]))
         def cond2js(cond):
             left = expr2js(cond.left)
             comp = cond.comp
@@ -463,16 +462,15 @@ def perform_actions(ns):
             if comp in ['<=', 'is less than or equal to']: comp = '<='
             return '{} {} {}'.format(left, comp, right)
         def expr2js(expr):
-            #print(repr(expr))
             if type(expr)==Name: return str(expr)
             if type(expr)==str: return "'"+expr+"'"
+            if type(expr)==Regex: return str(expr)
             if type(expr)==Lambda: return lambda2js(expr)
             if type(expr)==FuncCall: return funccall2js(expr)
             if type(expr)==Cond: return cond2js(expr)
             left = expr.left
             if type(left)==Name and left.name not in [*scope, *builtins]:
                 scope.append(left.name)
-            #print('AAAAAAa')
             if expr.op:
                 op = expr.op
                 if op in ['+', 'plus', 'and', 'with']:  op = '+'
@@ -483,7 +481,6 @@ def perform_actions(ns):
                 right = expr.right
                 if type(right)==Name and right.name not in [*scope, *builtins]:
                     scope.append(right.name)
-                #print(left, op, right)
                 return '{} {} {}'.format(left, op, right)
             return str(left)
         def vardef2js(vardef):
@@ -491,7 +488,13 @@ def perform_actions(ns):
                 scope.append(vardef.set.name)
             if type(vardef.to)==FromLoop:
                 return fromloop2js(vardef.to, vardef.set)
-            return '{} = {};'.format(vardef.set, expr2js(vardef.to))
+            if type(vardef.to)!=Lambda:
+                return '{} = {};'.format(vardef.set, expr2js(vardef.to))
+            else:
+                if vardef.to.result:
+                    return '{} = {};'.format(vardef.set, lambda2js(vardef.to))
+                else:
+                    return '{} = {}'.format(vardef.set, lambda2js(vardef.to))
         def fromloop2js(loop, variable):
             global block
             block = True
@@ -532,7 +535,6 @@ def perform_actions(ns):
             if block:
                 block = False
             else:
-                #out += ' // ' + str(stmt.expr) + '\n'
                 out += '\n'
         while 0<indent:
             indent -= 1
@@ -542,138 +544,6 @@ def perform_actions(ns):
             return defs+'\n'+out
         else:
             return out
-##    def javascript(module):
-##        global inline
-##        scope = []
-##        inline = False
-##        builtins = ['print', 'skip', 'break']
-##        def expr2js(expr):
-##            if type(expr)==list:
-##                for part in expr:
-##                    while type(part)==list:
-##                        part = part[-1]
-##                    print(type(part))
-##                return exit()
-##            if type(expr.left)==Name and expr.left.name not in [*scope, *builtins]:
-##                    scope.append(expr.left.name)
-##            if expr.op:
-##                op = expr.op.text
-##                if op in ['+', 'plus', 'and', 'with']:
-##                    op = '+'
-##                elif op in ['-', 'minus', 'without']:
-##                    op = '-'
-##                elif op in ['*', 'times', 'by']:
-##                    op = '*'
-##                elif op in ['/', 'on', 'over']:
-##                    op = '/'
-##                elif op in ['%', 'mod']:
-##                    op = '%'
-##                if type(expr.right)==Name and expr.right.name not in [*scope, *builtins]:
-##                    scope.append(expr.right.name)
-##                left = expr.left
-##                right = expr.right
-##                if type(left)==Name:
-##                    left = left.name
-##                else:
-##                    try:
-##                        if left.expr_name in ['STRING', 'REGEX']:
-##                            left = left.text
-##                        else:
-##                            left = int(left)
-##                    except:
-##                        left = int(left)
-##                if type(right)==Name:
-##                    right = right.name
-##                else:
-##                    try:
-##                        if right.expr_name in ['STRING', 'REGEX']:
-##                            right = right.text
-##                        else:
-##                            right = int(right.text)
-##                    except:
-##                        right = right.text
-##                return '{} {} {}'.format(left, op, right)
-##            else:
-##                if type(expr.left)==Name:
-##                    return expr.left.name
-##                else:
-##                    try:
-##                        if expr.left.expr_name in ['STRING', 'REGEX']:
-##                            return expr.left.text
-##                        else:
-##                            return int(expr.left.text)
-##                    except:
-##                        return int(expr.left.text)
-##        def vardef2js(vardef):
-##            global inline
-##            if vardef.set not in [*scope, *builtins]:
-##                    scope.append(vardef.set)
-##            if type(vardef.to)==FromLoop:
-##                inline = True
-##                return 'for ({0} = {1}; {0}++ < {2};) '.format(vardef.set, vardef.to._from, vardef.to._to)
-##            else:
-##                return '{} = {};\n'.format(vardef.set, expr2js(vardef.to))
-##        def if2js(ifstat):
-##            global inline
-##            inline = True
-##            if ifstat.op:
-##                op = ifstat.op.text
-##                if op in ['is', '=']: op = '=='
-##                if op in ['is not', '!=']: op = '!='
-##                if op in ['is less than', '<']: op = '<'
-##                if op in ['is more than', '>']: op = '>'
-##                if op in ['is less than or equal to', '<=']: op = '<='
-##                if op in ['is more than or equal to', '>=']: op = '>='
-##                return 'if ({} {} {}) '.format(expr2js(ifstat.left), op, expr2js(ifstat.right))
-##            else:
-##                return 'if ({}) '.format(expr2js(ifstat.left))
-##        def func2js(funccall):
-##            name = funccall.name
-##            if name=='skip':
-##                return 'continue;\n'
-##            if name=='break':
-##                return 'break;\n'
-##            if funccall.name not in [*scope, *builtins]:
-##                scope.append(funccall.name)
-##            if name=='print':
-##                name = 'console.log'
-##            if name=='$':
-##                name = 'document.querySelector'
-##            return '{}({});\n'.format(name, ', '.join([expr2js(x) for x in funccall.args]))
-##        lastindent = 0
-##        code = ''
-##        for stmt in module.body:
-##            if stmt.indent!=lastindent:
-##                if abs(stmt.indent-lastindent)>1:
-##                    raise IndentationError()
-##                if stmt.indent>lastindent:
-##                    if inline:
-##                        inline = False
-##                        code += '{\n'
-##                    else:
-##                        code += '    '*stmt.indent+'{\n'
-##                else:
-##                    if inline:
-##                        inline = False
-##                        code += '}\n'
-##                    else:
-##                        code += '    '*stmt.indent+'}\n'
-##                lastindent = stmt.indent
-##            if type(stmt)==VarDef:
-##                code += '    '*stmt.indent+vardef2js(stmt)
-##            elif type(stmt)==IfStat:
-##                code += '    '*stmt.indent+if2js(stmt)
-##            elif type(stmt)==FuncCall:
-##                code += '    '*stmt.indent+func2js(stmt)
-##        if lastindent!=0:
-##                if lastindent>1:
-##                    raise SyntaxError('uhhhh')
-##                code += '}\n'
-##        scope = [x for x in scope if '.' not in x and '#' not in x]
-##        if len(scope)>0:
-##            code = 'var '+', '.join(scope)+';\n'+code
-##        return code
-    #print(repr(reparse(ast)))
     global parse
     parse = reparse(ast)
     print(javascript(parse))
@@ -685,14 +555,3 @@ if __name__ == '__main__':
             fout.write(perform_actions(fin.read()))
             fin.close()
         fout.close()
-    #parser = argparse.ArgumentParser()
-    #parser.add_argument('input', metavar='in_file', type=str,
-    #                    help='The input nicescript file')
-    #parser.add_argument('-o', type=str, default='a.out',
-    #                    help='The output file.')
-    #args = parser.parse_args()
-    #with open(args.o, 'w') as fout:
-    #    with open(args.input, 'r') as fin:
-    #        fout.write(perform_actions(fin.read()))
-    #        fin.close()
-    #    fout.close()
