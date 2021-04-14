@@ -17,15 +17,21 @@ optional arguments:
 ## Syntax
 ---
 ### Statements
-NiceScript _strictly_ uses indentation to indicate compound statements.
+NiceScript _strictly_ uses indentation to indicate block statements.
 The currently limited grammar includes three types of statements:
+#### Identifiers
+Identifiers (represented as `NAME`) is anything that matches the following regex: `[a-zA-Z_$#][a-zA-Z0-9_$#\.]*`, or in words:
+An identifier can start with any letter, underscore, dollar, and hash sign.
+An identifier can continue with any alphanumeric character, underscore, dollar, hash sign, and period.
 #### Variable definitions/changes
 Variable definitions and changes take the form `NAME = EXPRESSION`.
 #### If statements
 If statements take the form `if EXPRESSION` or `if EXPRESSION COMPARISON EXPRESSION`, if statements must be followed by indented code, the statement stops on unindentation.
 Comparisons can be `=` (js `===`,) `!=` (js `!==`,) `>`, `>=`, `<`, or `<=`.
 #### Function definitions
-Currently, you can only define lambdas in the form `ARGUMENTS -> EXPRESSION`, where `ARGUMENTS` are identifiers seperated by whitespace.
+Lambdas can be written inline, or block.
+Inline Lambdas take the form `ARGUMENTS -> EXPRESSION`, where `ARGUMENTS` are identifiers seperated by whitespace.
+Block Lambdas take the form `ARGUMENTS ->`, followed by a block statement.
 #### Function calls
 Function calls are similar to simplified ruby or elixir function calls: `FUNCTIONNAME ARGUMENTS`, where `ARGUMENTS` are expressions seperated by whitespace.
 Function calls without arguments can be done with just the name by itself.
