@@ -17,15 +17,20 @@ optional arguments:
 ## Syntax
 ---
 ### Statements
-NiceScript uses indentation to indicate compound statements.
+NiceScript _strictly_ uses indentation to indicate compound statements.
 The currently limited grammar includes three types of statements:
 #### Variable definitions/changes
 Variable definitions and changes take the form `NAME = EXPRESSION`.
 #### If statements
-If statements take the form `if EXPRESSION` or `if EXPRESSION = EXPRESSION`, if statements must be followed by indented code, the statement stops on unindentation.
+If statements take the form `if EXPRESSION` or `if EXPRESSION COMPARISON EXPRESSION`, if statements must be followed by indented code, the statement stops on unindentation.
+Comparisons can be `=` (js `===`,) `!=` (js `!==`,) `>`, `>=`, `<`, or `<=`.
+#### Function definitions
+Currently, you can only define lambdas in the form `ARGUMENTS -> EXPRESSION`, where `ARGUMENTS` are identifiers seperated by whitespace.
 #### Function calls
-Function calls are similar to simplified ruby or elixir function calls: `FUNCTIONNAME ARGUMENTS`, arguments are expressions seperated by whitespace.
+Function calls are similar to simplified ruby or elixir function calls: `FUNCTIONNAME ARGUMENTS`, where `ARGUMENTS` are expressions seperated by whitespace.
 Function calls without arguments can be done with just the name by itself.
+#### Types
+There are currently only three types: `NUMBER`, `STRING`, and `REGEX`.
 ### Alternative tokens
 NiceScript has plenty of alternative tokens for mathamatical expressions. the complete list is:
 - `with`, `and`, and `plus` instead of `+`
@@ -34,9 +39,15 @@ NiceScript has plenty of alternative tokens for mathamatical expressions. the co
 - `on`, and `over` instead of `/`
 - `mod`, and `modulo` instead of `%`
 - `is` instead of `=`
+- `is not` instead of `!=`
+- `is more than` instead of `>`
+- `is less than` instead of `<`
+- `is more than or equal to` instead of `>=`
+- `is less than or equal to` instead of `<=`
 ### Built in functions
-NiceScript currently has 3 built in functions (including their JavaScript equivilents):
+NiceScript currently has 4 built in functions (including their JavaScript equivalents):
 - `print` becomes `console.log`
+- `printerror` becomes `console.error`
 - `skip` becomes `continue;`
 - `break` stays as `break;`
 ### Example program
