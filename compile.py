@@ -17,10 +17,10 @@ GT = ">"/"is more than"
 GTE = ">="
 LT = "<"/"is less than"
 LTE = "<="
-PLUS = "+"/("plus"/"and"/"with")
-MINUS = "-"/("minus"/"without")
+PLUS = "+"/("plus")
+MINUS = "-"/("minus")
 TIMES = "*"/("times"/"by")
-ON = "/"/("on"/"over")
+ON = "/"/("over")
 MOD = "%"/("mod"/"modulo")
 comparison = LTE / GTE / LT / GT / NOTEQU / EQU
 value = ('(' WHITESPACE? expr_func WHITESPACE? ')') / NUMBER / STRING / REGEX / function / IDENTIFIER
@@ -478,8 +478,8 @@ def perform_actions(ns):
                 scope[-1].append(left.name)
             if expr.op:
                 op = expr.op
-                if op in ['+', 'plus', 'and', 'with']:  op = '+'
-                if op in ['-', 'minus', 'without']:     op = '-'
+                if op in ['+', 'plus']:                 op = '+'
+                if op in ['-', 'minus']:                op = '-'
                 if op in ['*', 'times', 'by']:          op = '*'
                 if op in ['/', 'on', 'over']:           op = '/'
                 if op in ['%', 'mod', 'modulo']:        op = '%'
