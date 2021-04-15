@@ -481,7 +481,7 @@ def perform_actions(ns):
                 if op in ['+', 'plus']:                 op = '+'
                 if op in ['-', 'minus']:                op = '-'
                 if op in ['*', 'times', 'by']:          op = '*'
-                if op in ['/', 'on', 'over']:           op = '/'
+                if op in ['/', 'over']:                 op = '/'
                 if op in ['%', 'mod', 'modulo']:        op = '%'
                 right = expr.right
                 if type(right)==Name and right.name=='name':
