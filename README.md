@@ -48,8 +48,6 @@ NiceScript has plenty of alternative tokens for mathamatical expressions. the co
 - `is not` instead of `!=`
 - `is more than` instead of `>`
 - `is less than` instead of `<`
-- `is more than or equal to` instead of `>=`
-- `is less than or equal to` instead of `<=`
 ### Built in functions
 NiceScript currently has 4 built in functions (including their JavaScript equivalents):
 - `print` becomes `console.log`
