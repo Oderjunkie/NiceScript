@@ -4,6 +4,27 @@ import argparse
 from iteration_utilities import deepflatten
 from parsimonious import Grammar, NodeVisitor
 import parsimonious.nodes as pNodes
+import sys
+
+def reccursive_debug_list(arg):
+    if type(arg)==list:
+        out = [reccursive_debug_list(el) for el in arg]
+        out = '[' + ', '.join(out) + ']'
+        return out
+    return str(arg)
+
+def traceback(e):
+    print('Custom traceback:')
+    print('File "{}", line {}, in {}'.format(e.__traceback__.tb_frame.f_code.co_filename, e.__traceback__.tb_frame.f_code.co_firstlineno, e.__traceback__.tb_frame.f_code.co_name))
+    with open(e.__traceback__.tb_frame.f_code.co_filename) as f:
+        lines = f.readlines()
+        line = e.__traceback__.tb_lineno-1
+        print('    {}\t{}'.format(line-1, lines[line-1][:-1]))
+        print('>>> {}\t{}'.format(line,   lines[line][:-1]))
+        print('    {}\t{}'.format(line+1, lines[line+1][:-1]))
+        print('{}: {}'.format(str(type(e))[8:-2], str(e)))
+        f.close()
+        sys.exit()
 
 grammar = Grammar(r"""
 module = ( NEWLINE? ((COMMENT / statement) (NEWLINE (COMMENT / statement))* NEWLINE?)? )
@@ -17,47 +38,61 @@ GT = ">"/"is more than"
 GTE = ">="
 LT = "<"/"is less than"
 LTE = "<="
-PLUS = "+"/("plus")
-MINUS = "-"/("minus")
-TIMES = "*"/("times"/"by")
-ON = "/"/("over")
-MOD = "%"/("mod"/"modulo")
+PLUS = "+"
+MINUS = "-"
+TIMES = "*"
+ON = "/"
+MOD = "%"
+SEM_PLUS = ("plus")
+SEM_MINUS = ("minus")
+SEM_TIMES = ("times"/"by")
+SEM_ON = ("over")
+SEM_MOD = ("mod"/"modulo")
+DOT = "."
 comparison = LTE / GTE / LT / GT / NOTEQU / EQU
-value = ('(' WHITESPACE? expr_func WHITESPACE? ')') / NUMBER / STRING / REGEX / function / IDENTIFIER
+value = ('(' WHITESPACE? expr_func WHITESPACE? ')') / array / object / NUMBER / STRING / REGEX / function / 'undefined' / 'null' / IDENTIFIER
 
 cond = ( ( value ) WHITESPACE? comparison WHITESPACE? ( value ) )
 
-algebraic_op = PLUS/MINUS/TIMES/ON/MOD
+algebraic_op = PLUS/MINUS/TIMES/ON/MOD/DOT
+semantic_op = SEM_PLUS/SEM_MINUS/SEM_TIMES/SEM_ON/SEM_MOD
 
 fromloop = ( "from" WHITESPACE expr WHITESPACE "to" WHITESPACE expr )
 vardef = ( IDENTIFIER WHITESPACE? EQU WHITESPACE? expr_func )
-functioncall = IDENTIFIER (WHITESPACE expr)+
-ifstat = "if" WHITESPACE (cond / expr)
-function = IDENTIFIER (WHITESPACE IDENTIFIER)* WHITESPACE? '->' WHITESPACE? expr_func?
+functioncall = value (WHITESPACE expr)+
+ifstat = "if" WHITESPACE (cond)
+elsestat = "else"
+function = IDENTIFIER? (WHITESPACE IDENTIFIER)* WHITESPACE? '->' WHITESPACE? expr_func?
 
 expr_func = vardef
           / function
+          / ( value WHITESPACE? algebraic_op WHITESPACE? value )
+          / ( value WHITESPACE semantic_op WHITESPACE value )
+          / ( value '[' WHITESPACE? value WHITESPACE? ']' )
           / fromloop
           / ifstat
+          / elsestat
           / functioncall
-          / ( value WHITESPACE algebraic_op WHITESPACE value )
-          / ( value '[' WHITESPACE? value WHITESPACE? ']' )
           / ( value )
 
 expr = vardef
      / function
-     / fromloop
-     / ifstat
      / ( value WHITESPACE algebraic_op WHITESPACE value )
      / ( value '[' WHITESPACE? value WHITESPACE? ']' )
+     / fromloop
+     / ifstat
+     / elsestat
      / ( value )
 
+array = '[' ((WHITELINE? value WHITELINE? ',')* (WHITELINE? value))? WHITELINE? ']'
+object = '{' ((WHITELINE? value WHITELINE? ':' WHITELINE? value WHITELINE? ',')* (WHITELINE? value WHITELINE? ':' WHITELINE? value))? WHITELINE? '}'
 STRING = ~"(\".*?\")|('.*?\')|(`.*?`)"s
 NUMBER = (~"[0-9]+") / (~"0x([0-9A-F]|[0-9a-f])*")
 REGEX = ~"\/([^\/]|\\\/)*?\/"
-IDENTIFIER = ~"[a-zA-Z_$#][a-zA-Z0-9_$#\.]*"
+IDENTIFIER = ~"[a-zA-Z_$#][a-zA-Z0-9_$#]*"
 NEWLINE = ~"(\r|\n|\r\n)+"
 WHITESPACE = ~"[ \t]+"
+WHITELINE = ~"(\r|\n|\r\n|[ \t])+"
 COMMENT = INDENT* ~"(\/\*.*?\*\/)|(\/\/.*\n)"s
 """)
 
@@ -88,7 +123,14 @@ def perform_actions(ns):
         def __repr__(self):
             return 'IfStat({})'.format(repr(self.term))
         def __str__(self):
-            return '    '*self.indent+'if {}'.format(str(self.term))
+            return 'if {}'.format(str(self.term))
+    class ElseStat:
+        def __init__(self):
+            pass
+        def __repr__(self):
+            return 'ElseStat()'
+        def __str__(self):
+            return 'else'
     class Stat:
         def __init__(self, indent=0, expr=None):
             self.indent = indent
@@ -166,8 +208,35 @@ def perform_actions(ns):
             return 'Cond({}, {}, {})'.format(repr(self.left), repr(self.comp), repr(self.right))
         def __str__(self):
             return '{} {} {}'.format(str(self.left), str(self.comp), str(self.right))
-    class Regex(str):
-        pass
+    class Regex():
+        def __init__(self, string):
+            self.string = string
+        def __str__(self):
+            return self.string
+        def __repr__(self):
+            return 'Regex({})'.format(self.string)
+    class Array():
+        def __init__(self, arr):
+            self.arr = arr
+        def __str__(self):
+            return str(self.arr)
+        def __repr__(self):
+            return 'Array(' + reccursive_debug_list(self.arr) + ')'
+        def __iter__(self):
+            return iter(self.arr)
+    class Object():
+        def __init__(self, arr):
+            self.arr = arr
+        def __str__(self):
+            out = '{'
+            for k,v in self.arr:
+                out += '{}: {}'.format(str(k), str(v))
+            out += '}'
+            return out
+        def __repr__(self):
+            return 'Object(' + reccursive_debug_list(self.arr) + ')'
+        def __iter__(self):
+            return iter(self.arr)
     class Expr:
         def __init__(self, left, op=None, right=None):
             self.left = left
@@ -200,7 +269,7 @@ def perform_actions(ns):
                 except Exception:
                     pass
                 return '{} {} {}'.format(left, op, right)
-            return '{}'.format(self.left.text)
+            return '{}'.format(left)
     class TrickOrTreater(NodeVisitor):
         def visit_module(self, node, visited_children):
             body = []
@@ -244,6 +313,7 @@ def perform_actions(ns):
                 return VarDef(Name(final[0].text), final[-1])
             except Exception as e:
                 print('VarDef error: {}'.format(e))
+                traceback(e)
                 return visited_children or node
         def visit_function(self, node, visited_children):
             args = []
@@ -271,11 +341,18 @@ def perform_actions(ns):
             try:
                 part = visited_children[1]
                 args = [x[1] for x in part]
-                assert visited_children[0].expr_name=='IDENTIFIER'
-                final = FuncCall(Name(visited_children[0].text), args)
+                final = None
+                if type(visited_children[0]) not in [Expr, Name]:
+                    if visited_children[0].expr_name=='IDENTIFIER':
+                        final = FuncCall(Name(visited_children[0].text), args)
+                    else:
+                        raise Exception('we dont support that many function call things k thx bye')
+                else:
+                    final = FuncCall(visited_children[0], args)
                 return final
             except Exception as e:
                 print('FunctionCall error: {}'.format(e))
+                traceback(e)
                 return visited_children or node
         def visit_fromloop(self, node, visited_children):
             finals = []
@@ -294,28 +371,6 @@ def perform_actions(ns):
                 return FromLoop(finals[1], finals[3])
             except Exception as e:
                 print('FromLoop error: {}'.format(e))
-                return visited_children or node
-        def visit_value(self, node, visited_children):
-            text = visited_children
-            try:
-                itr = 0
-                while type(text)==list:
-                    itr += 1
-                    text = text[len(text)//2]
-                if type(text) in [Expr, FuncCall, Lambda, FromLoop]:
-                    return text
-                if text.expr_name=='IDENTIFIER':
-                    return Name(text.text)
-                if text.expr_name=='STRING':
-                    return text.text[1:-1]
-                if text.expr_name=='REGEX':
-                    return Regex(text.text)
-                num = float(text.text)
-                if int(num)==num:
-                    num = int(num)
-                return num
-            except Exception as e:
-                print('Value error: {}'.format(e))
                 return visited_children or node
         def visit_expr(self, node, visited_children):
             thing = visited_children or node
@@ -432,7 +487,68 @@ def perform_actions(ns):
             return Cond(left, comp, right)
         def visit_ifstat(self, node, visited_children):
             part = visited_children or node
-            return IfStat(part[2][0])
+            condexpr = part[2]
+            while type(condexpr)==list:
+                condexpr = condexpr[0]
+            return IfStat(condexpr)
+        def visit_value(self, node, visited_children):
+            text = visited_children
+            try:
+                itr = 0
+                while type(text)==list:
+                    itr += 1
+                    text = text[len(text)//2]
+                if type(text) in [Expr, FuncCall, Lambda, FromLoop, Array, Object]:
+                    return text
+                if text.expr_name=='IDENTIFIER':
+                    return Name(text.text)
+                if text.expr_name=='STRING':
+                    return text.text[1:-1]
+                if text.expr_name=='REGEX':
+                    return Regex(text.text)
+                num = float(text.text)
+                if int(num)==num:
+                    num = int(num)
+                return num
+            except Exception as e:
+                print('Value error: {}'.format(e))
+                return visited_children or node
+        def visit_array(self, node, visited_children):
+            part = visited_children or node
+            assert part[0].text=='['
+            assert part[3].text==']'
+            if type(part[1])!=list:
+                return Array([])
+            arrayret = [None]*(len(part[1][0][0])+1) # prevent reallocs
+            try:
+                for i, el in enumerate(part[1][0][0]):
+                    assert el[3].text==','
+                    arrayret[i] = el[1]
+                arrayret[-1] = part[1][0][1][1]
+                return Array(arrayret)
+            except Exception as e:
+                traceback(e)
+            return part
+        def visit_object(self, node, visited_children):
+            part = visited_children or node
+            assert part[0].text=='{'
+            assert part[3].text=='}'
+            if type(part[1])!=list:
+                return Object([])
+            arrayret = [[None, None]]*(len(part[1][0][0].children)+1) # prevent reallocs
+            try:
+                for i, el in enumerate(part[1][0][0]):
+                    assert el[3].text==':'
+                    assert el[7].text==','
+                    arrayret[i][0] = el[1]
+                    arrayret[i][1] = el[5]
+                arrayret[-1] = part[1][0][1][1]
+                return Object(arrayret)
+            except Exception as e:
+                traceback(e)
+            return part
+        def visit_elsestat(self, node, visited_children):
+            return ElseStat()
         def generic_visit(self, node, visited_children):
             return visited_children or node
     def reparse(tree):
@@ -456,21 +572,32 @@ def perform_actions(ns):
             left = expr2js(cond.left)
             comp = cond.comp
             right = expr2js(cond.right)
-            if comp in ['=', 'is']: comp = '==='
-            if comp in ['!=', 'is not']: comp = '!=='
+            if comp in ['=', 'is']:           comp = '==='
+            if comp in ['!=', 'is not']:      comp = '!=='
             if comp in ['>', 'is more than']: comp = '>'
             if comp in ['<', 'is less than']: comp = '<'
             return '{} {} {}'.format(left, comp, right)
+        def arr2js(arr):
+            return '[' + ', '.join(map(expr2js, arr)) + ']'
+        def obj2js(obj):
+            js = '{'
+            def el2obj(el):
+                return expr2js(el[0]) + ': ' + expr2js(el[1])
+            js += ', '.join(map(el2obj, obj))
+            js += '}'
+            return js
         def expr2js(expr, parened=False):
             string = '({})' if parened else '{}'
             global scope
-            if type(expr)==Name: return str(expr)
+            if type(expr)==Name: return expr.name
             if type(expr)==str: return "'"+expr+"'"
             if type(expr)==int: return str(expr)
             if type(expr)==Regex: return str(expr)
             if type(expr)==Lambda: return string.format(lambda2js(expr))
             if type(expr)==FuncCall: return string.format(funccall2js(expr))
             if type(expr)==Cond: return string.format(cond2js(expr))
+            if type(expr)==Array: return arr2js(expr)
+            if type(expr)==Object: return obj2js(expr)
             left = expr.left
             if type(left)==Name and left.name=='name':
                 left.name = '_name'
@@ -486,8 +613,10 @@ def perform_actions(ns):
                 right = expr.right
                 if type(right)==Name and right.name=='name':
                     right.name = '_name'
-                if type(right)==Name and right.name.split('.')[0] not in [*sum(scope, start=[]), *builtins]:
+                if type(right)==Name and right.name.split('.')[0] not in [*sum(scope, start=[]), *builtins] and op!='.':
                     scope[-1].append(right.name)
+                if op=='.':
+                    return string.format('{}.{}'.format(expr2js(left, True), expr2js(right, True)))
                 return string.format('{} {} {}'.format(expr2js(left, True), op, expr2js(right, True)))
             return string.format(str(left))
         def vardef2js(vardef):
@@ -513,9 +642,11 @@ def perform_actions(ns):
                 variable = '_name'
             return 'for ({0} = {1}; {0}++ < {2};)'.format(variable, loop.from_, loop.to_)
         def funccall2js(call):
-            name = call.name.name
+            name = expr2js(call.name)
             if name=='print' and 'print' not in scope[-1]:
                 name = 'console.log'
+            if name=='printerror' and 'printerror' not in scope[-1]:
+                name = 'console.error'
             if name=='#get':
                 name = 'document.querySelector'
             if name=='#id':
@@ -550,6 +681,9 @@ def perform_actions(ns):
             out += '    '*stmt.indent
             if type(stmt.expr)==VarDef:
                 out += vardef2js(stmt.expr)
+            if type(stmt.expr)==ElseStat:
+                out = out[:-1] + ' else'
+                block = True
             if type(stmt.expr)==IfStat:
                 out += ifstat2js(stmt.expr)
             if type(stmt.expr)==Name:
@@ -577,8 +711,14 @@ def perform_actions(ns):
     return str(ast)
 
 if __name__ == '__main__':
-    with open('a.out', 'w') as fout:
-        with open('codetest.txt', 'r') as fin:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('input', metavar='in_file', type=str,
+                        help='The input nicescript file')
+    parser.add_argument('-o', type=str, default='a.out',
+                        help='The output file.')
+    args = parser.parse_args()
+    with open(args.o, 'w') as fout:
+        with open(args.input, 'r') as fin:
             fout.write(perform_actions(fin.read()))
             fin.close()
         fout.close()
