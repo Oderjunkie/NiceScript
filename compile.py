@@ -14,9 +14,9 @@ INDENT = ~" {4}"
 EQU = "="/"is"
 NOTEQU = "!="/"is not"
 GT = ">"/"is more than"
-GTE = ">="/"is more than or equal to"
+GTE = ">="
 LT = "<"/"is less than"
-LTE = "<="/"is less than or equal to"
+LTE = "<="
 PLUS = "+"/("plus"/"and"/"with")
 MINUS = "-"/("minus"/"without")
 TIMES = "*"/("times"/"by")
@@ -460,8 +460,6 @@ def perform_actions(ns):
             if comp in ['!=', 'is not']: comp = '!=='
             if comp in ['>', 'is more than']: comp = '>'
             if comp in ['<', 'is less than']: comp = '<'
-            if comp in ['>=', 'is more than or equal to']: comp = '>='
-            if comp in ['<=', 'is less than or equal to']: comp = '<='
             return '{} {} {}'.format(left, comp, right)
         def expr2js(expr, parened=False):
             string = '({})' if parened else '{}'
