@@ -73,16 +73,16 @@ NiceScript currently has 4 built in functions (including their JavaScript equiva
 FizzBuzz (Console output):
 ```
 counter is from 0 to 100
-    if counter mod 15 is 0
-		print "FizzBuzz"
-		skip
-	if counter mod 5 is 0
-		print "Buzz"
-		skip
-	if counter mod 3 is 0
-		print "Fizz"
-		skip
-	print counter
+    if ( counter mod 15 ) is 0
+        print "FizzBuzz"
+        skip
+    if ( counter mod 5 ) is 0
+        print "Buzz"
+        skip
+    if ( counter mod 3 ) is 0
+        print "Fizz"
+        skip
+    print counter
 ```
 Compiles to:
 ```javascript
